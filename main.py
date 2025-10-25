@@ -39,7 +39,9 @@ class Main(Star):
         self.interval_mins = float(self.cfg.get("interval_mins", 20))
         self.rai = self.cfg.get("rai", True)
         self.node = self.cfg.get("node", False)
-        self.enable_parse_miniapp = self.cfg.get("enable_parse_miniapp", True)
+        self.enable_parse_video = self.cfg.get("enable_parse_video", False)
+        self.enable_parse_miniapp = self.cfg.get("enable_parse_miniapp", False)
+        self.enable_bangumi_recommend = self.cfg.get("enable_bangumi_recommend", False)
         self.t2i_url = self.cfg.get("bili_t2i", "")
 
         self.data_manager = DataManager()
@@ -56,9 +58,17 @@ class Main(Star):
         )
 
         self.dynamic_listener_task = asyncio.create_task(self.dynamic_listener.start())
+        
+        # 动态注册番剧推荐工具
+        if self.enable_bangumi_recommend:
+            self._register_bangumi_tool()
 
     @regex(BV)
     async def get_video_info(self, event: AstrMessageEvent):
+        # 检查是否启用视频解析
+        if not self.enable_parse_video:
+            return
+        
         if len(event.message_str) == 12:
             bvid = event.message_str
         else:
@@ -222,54 +232,58 @@ class Main(Star):
         else:
             return MessageEventResult().message("未找到指定的订阅")
 
-    @llm_tool("get_bangumi")
-    async def get_bangumi(
-        self,
-        event: AstrMessageEvent,
-        style: str = "ALL",
-        season: str = "ALL",
-        start_year: int = None,
-        end_year: int = None,
-    ):
-        """当用户希望推荐番剧时调用。根据用户的描述获取前 5 条推荐的动漫番剧。
+    def _register_bangumi_tool(self):
+        """动态注册番剧推荐工具"""
+        @llm_tool("get_bangumi")
+        async def get_bangumi(
+            self,
+            event: AstrMessageEvent,
+            style: str = "ALL",
+            season: str = "ALL",
+            start_year: int = None,
+            end_year: int = None,
+        ):
+            """当用户希望推荐番剧时调用。根据用户的描述获取前 5 条推荐的动漫番剧。
 
-        Args:
-            style(string): 番剧的风格。默认为全部。可选值有：原创, 漫画改, 小说改, 游戏改, 特摄, 布袋戏, 热血, 穿越, 奇幻, 战斗, 搞笑, 日常, 科幻, 萌系, 治愈, 校园, 儿童, 泡面, 恋爱, 少女, 魔法, 冒险, 历史, 架空, 机战, 神魔, 声控, 运动, 励志, 音乐, 推理, 社团, 智斗, 催泪, 美食, 偶像, 乙女, 职场
-            season(string): 番剧的季度。默认为全部。可选值有：WINTER, SPRING, SUMMER, AUTUMN。其也分别代表一月番、四月番、七月番、十月番
-            start_year(number): 起始年份。默认为空，即不限制年份。
-            end_year(number): 结束年份。默认为空，即不限制年份。
-        """
+            Args:
+                style(string): 番剧的风格。默认为全部。可选值有：原创, 漫画改, 小说改, 游戏改, 特摄, 布袋戏, 热血, 穿越, 奇幻, 战斗, 搞笑, 日常, 科幻, 萌系, 治愈, 校园, 儿童, 泡面, 恋爱, 少女, 魔法, 冒险, 历史, 架空, 机战, 神魔, 声控, 运动, 励志, 音乐, 推理, 社团, 智斗, 催泪, 美食, 偶像, 乙女, 职场
+                season(string): 番剧的季度。默认为全部。可选值有：WINTER, SPRING, SUMMER, AUTUMN。其也分别代表一月番、四月番、七月番、十月番
+                start_year(number): 起始年份。默认为空，即不限制年份。
+                end_year(number): 结束年份。默认为空，即不限制年份。
+            """
+            if style in category_mapping:
+                style = getattr(IF.Style.Anime, category_mapping[style], IF.Style.Anime.ALL)
+            else:
+                style = IF.Style.Anime.ALL
 
-        if style in category_mapping:
-            style = getattr(IF.Style.Anime, category_mapping[style], IF.Style.Anime.ALL)
-        else:
-            style = IF.Style.Anime.ALL
+            if season in ["WINTER", "SPRING", "SUMMER", "AUTUMN"]:
+                season = getattr(IF.Season, season, IF.Season.ALL)
+            else:
+                season = IF.Season.ALL
 
-        if season in ["WINTER", "SPRING", "SUMMER", "AUTUMN"]:
-            season = getattr(IF.Season, season, IF.Season.ALL)
-        else:
-            season = IF.Season.ALL
+            filters = bangumi.IndexFilterMeta.Anime(
+                area=IF.Area.JAPAN,
+                year=IF.make_time_filter(start=start_year, end=end_year, include_end=True),
+                season=season,
+                style=style,
+            )
+            index = await bangumi.get_index_info(
+                filters=filters, order=IF.Order.SCORE, sort=IF.Sort.DESC, pn=1, ps=5
+            )
 
-        filters = bangumi.IndexFilterMeta.Anime(
-            area=IF.Area.JAPAN,
-            year=IF.make_time_filter(start=start_year, end=end_year, include_end=True),
-            season=season,
-            style=style,
-        )
-        index = await bangumi.get_index_info(
-            filters=filters, order=IF.Order.SCORE, sort=IF.Sort.DESC, pn=1, ps=5
-        )
-
-        result = "推荐的番剧:\n"
-        for item in index["list"]:
-            result += f"标题: {item['title']}\n"
-            result += f"副标题: {item['subTitle']}\n"
-            result += f"评分: {item['score']}\n"
-            result += f"集数: {item['index_show']}\n"
-            result += f"链接: {item['link']}\n"
-            result += "\n"
-        result += "请分点，贴心地回答。不要输出 markdown 格式。"
-        return result
+            result = "推荐的番剧:\n"
+            for item in index["list"]:
+                result += f"标题: {item['title']}\n"
+                result += f"副标题: {item['subTitle']}\n"
+                result += f"评分: {item['score']}\n"
+                result += f"集数: {item['index_show']}\n"
+                result += f"链接: {item['link']}\n"
+                result += "\n"
+            result += "请分点，贴心地回答。不要输出 markdown 格式。"
+            return result
+        
+        # 将方法绑定到实例
+        self.get_bangumi = get_bangumi.__get__(self, self.__class__)
 
     @permission_type(PermissionType.ADMIN)
     @command("全局删除", alias={"bili_global_del"})
@@ -347,41 +361,44 @@ class Main(Star):
 
     @event_message_type(EventMessageType.ALL)
     async def parse_miniapp(self, event: AstrMessageEvent):
-        if self.enable_parse_miniapp:
-            for msg_element in event.message_obj.message:
-                if (
-                    hasattr(msg_element, "type")
-                    and msg_element.type == "Json"
-                    and hasattr(msg_element, "data")
-                ):
-                    json_string = msg_element.data
+        # 检查是否启用小程序解析
+        if not self.enable_parse_miniapp:
+            return
+            
+        for msg_element in event.message_obj.message:
+            if (
+                hasattr(msg_element, "type")
+                and msg_element.type == "Json"
+                and hasattr(msg_element, "data")
+            ):
+                json_string = msg_element.data
 
-                    try:
-                        parsed_data = json.loads(json_string)
-                        meta = parsed_data.get("meta", {})
-                        detail_1 = meta.get("detail_1", {})
-                        title = detail_1.get("title")
-                        qqdocurl = detail_1.get("qqdocurl")
-                        desc = detail_1.get("desc")
+                try:
+                    parsed_data = json.loads(json_string)
+                    meta = parsed_data.get("meta", {})
+                    detail_1 = meta.get("detail_1", {})
+                    title = detail_1.get("title")
+                    qqdocurl = detail_1.get("qqdocurl")
+                    desc = detail_1.get("desc")
 
-                        if title == "哔哩哔哩" and qqdocurl:
-                            if "https://b23.tv" in qqdocurl:
-                                qqdocurl = await self.bili_client.b23_to_bv(qqdocurl)
-                            ret = f"视频: {desc}\n链接: {qqdocurl}"
-                            await event.send(MessageChain().message(ret))
-                        news = meta.get("news", {})
-                        tag = news.get("tag", "")
-                        jumpurl = news.get("jumpUrl", "")
-                        title = news.get("title", "")
-                        if tag == "哔哩哔哩" and jumpurl:
-                            if "https://b23.tv" in jumpurl:
-                                jumpurl = await self.bili_client.b23_to_bv(jumpurl)
-                            ret = f"视频: {title}\n链接: {jumpurl}"
-                            await event.send(MessageChain().message(ret))
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to decode JSON string: {json_string}")
-                    except Exception as e:
-                        logger.error(f"An error occurred during JSON processing: {e}")
+                    if title == "哔哩哔哩" and qqdocurl:
+                        if "https://b23.tv" in qqdocurl:
+                            qqdocurl = await self.bili_client.b23_to_bv(qqdocurl)
+                        ret = f"视频: {desc}\n链接: {qqdocurl}"
+                        await event.send(MessageChain().message(ret))
+                    news = meta.get("news", {})
+                    tag = news.get("tag", "")
+                    jumpurl = news.get("jumpUrl", "")
+                    title = news.get("title", "")
+                    if tag == "哔哩哔哩" and jumpurl:
+                        if "https://b23.tv" in jumpurl:
+                            jumpurl = await self.bili_client.b23_to_bv(jumpurl)
+                        ret = f"视频: {title}\n链接: {jumpurl}"
+                        await event.send(MessageChain().message(ret))
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to decode JSON string: {json_string}")
+                except Exception as e:
+                    logger.error(f"An error occurred during JSON processing: {e}")
 
     @command("订阅测试", alias={"bili_sub_test"})
     async def sub_test(self, event: AstrMessageEvent, uid: str):

@@ -24,11 +24,23 @@
         "hint": "是否以转发消息形式推送(仅对图文动态生效)",
         "default": false
     },
+    "enable_parse_video": {
+        "description": "enable_parse_video",
+        "type": "bool",
+        "hint": "是否解析视频链接（BV号）",
+        "default": false
+    },
     "enable_parse_miniapp": {
         "description": "enable_parse_miniapp",
         "type": "bool",
         "hint": "是否解析小程序",
-        "default": true
+        "default": false
+    },
+    "enable_bangumi_recommend": {
+        "description": "enable_bangumi_recommend",
+        "type": "bool",
+        "hint": "是否启用番剧推荐功能",
+        "default": false
     },
     "bili_t2i":{
         "description": "bili_t2i",
