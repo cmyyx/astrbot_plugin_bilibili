@@ -411,6 +411,41 @@ class Main(Star):
             )
             await self.dynamic_listener._handle_new_dynamic(sub_user, render_data)
 
+    @command("动态调试", alias={"bili_debug"})
+    async def debug_dynamics(self, event: AstrMessageEvent, uid: str):
+        """调试命令：查看某个 UP 主最新动态的原始数据结构"""
+        dyn = await self.bili_client.get_latest_dynamics(int(uid))
+        if not dyn:
+            return MessageEventResult().message("获取动态失败")
+        
+        items = dyn.get("items", [])
+        if not items:
+            return MessageEventResult().message("该 UP 主没有动态")
+        
+        # 只看第一条动态
+        item = items[0]
+        result = f"动态 ID: {item.get('id_str')}\n"
+        result += f"动态类型: {item.get('type')}\n"
+        result += f"包含的模块: {', '.join(item.get('modules', {}).keys())}\n"
+        
+        if "module_tag" in item.get("modules", {}):
+            result += f"\nmodule_tag:\n{item['modules']['module_tag']}\n"
+        
+        if "display" in item.get("modules", {}):
+            result += f"\ndisplay:\n{item['modules']['display']}\n"
+        
+        # 获取动态内容摘要
+        try:
+            if item.get("type") in ("DYNAMIC_TYPE_DRAW", "DYNAMIC_TYPE_WORD"):
+                major = item.get("modules", {}).get("module_dynamic", {}).get("major", {})
+                if "opus" in major:
+                    summary = major["opus"]["summary"]["text"][:100]
+                    result += f"\n内容摘要: {summary}...\n"
+        except:
+            pass
+        
+        return MessageEventResult().message(result)
+
     async def terminate(self):
         if self.dynamic_listener_task and not self.dynamic_listener_task.done():
             self.dynamic_listener_task.cancel()

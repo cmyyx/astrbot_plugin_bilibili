@@ -195,6 +195,17 @@ class DynamicListener:
         for item in items:
             if "modules" not in item:
                 continue
+            
+            # 调试：输出动态的完整结构
+            logger.info(f"动态 ID: {item.get('id_str')}")
+            logger.info(f"动态类型: {item.get('type')}")
+            logger.info(f"动态模块: {list(item.get('modules', {}).keys())}")
+            if "module_tag" in item.get("modules", {}):
+                logger.info(f"module_tag 内容: {item['modules']['module_tag']}")
+            if "display" in item.get("modules", {}):
+                logger.info(f"display 内容: {item['modules']['display']}")
+            logger.info("=" * 50)
+            
             # 过滤置顶
             if (
                 "module_tag" in item["modules"]
