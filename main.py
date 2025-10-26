@@ -411,34 +411,72 @@ class Main(Star):
             )
             await self.dynamic_listener._handle_new_dynamic(sub_user, render_data)
 
-    @command("动态调试", alias={"bili_debug"})
-    async def debug_dynamics(self, event: AstrMessageEvent, dynamic_id: str):
-        """调试命令：通过动态 ID 查看动态的原始数据结构。用法: /动态调试 1127889155310747648"""
-        item = await self.bili_client.get_dynamic_detail(dynamic_id)
-        if not item:
+    @command("动态调试")
+    async def debug_dynamics(self, event: AstrMessageEvent, uid: str, index: str = "1"):
+        """调试命令：查看 UP 主动态列表并选择查看详情。用法: /动态调试 70070 1"""
+        dyn = await self.bili_client.get_latest_dynamics(int(uid))
+        if not dyn:
             return MessageEventResult().message("获取动态失败")
         
-        result = f"动态 ID: {item.get('id_str')}\n"
-        result += f"动态类型: {item.get('type')}\n"
-        result += f"包含的模块: {', '.join(item.get('modules', {}).keys())}\n"
+        items = dyn.get("items", [])
+        if not items:
+            return MessageEventResult().message("该 UP 主没有动态")
         
-        if "module_tag" in item.get("modules", {}):
-            result += f"\nmodule_tag:\n{item['modules']['module_tag']}\n"
+        # 如果只提供 UID，列出所有动态
+        if not index or index == "list":
+            result = f"UP 主 {uid} 的动态列表：\n\n"
+            for i, item in enumerate(items[:10], 1):  # 只显示前10条
+                dyn_type = item.get('type', '未知')
+                dyn_id = item.get('id_str', '未知')
+                
+                # 尝试获取内容摘要
+                summary = ""
+                try:
+                    if item.get("type") in ("DYNAMIC_TYPE_DRAW", "DYNAMIC_TYPE_WORD"):
+                        major = item.get("modules", {}).get("module_dynamic", {}).get("major", {})
+                        if "opus" in major:
+                            summary = major["opus"]["summary"]["text"][:50]
+                except:
+                    pass
+                
+                result += f"{i}. [{dyn_type}] {dyn_id}\n"
+                if summary:
+                    result += f"   内容: {summary}...\n"
+                result += "\n"
+            
+            result += f"\n使用 /动态调试 {uid} <序号> 查看详情"
+            return MessageEventResult().message(result)
         
-        if "display" in item.get("modules", {}):
-            result += f"\ndisplay:\n{item['modules']['display']}\n"
-        
-        # 获取动态内容摘要
+        # 查看指定序号的动态详情
         try:
-            if item.get("type") in ("DYNAMIC_TYPE_DRAW", "DYNAMIC_TYPE_WORD"):
-                major = item.get("modules", {}).get("module_dynamic", {}).get("major", {})
-                if "opus" in major:
-                    summary = major["opus"]["summary"]["text"][:100]
-                    result += f"\n内容摘要: {summary}...\n"
-        except:
-            pass
-        
-        return MessageEventResult().message(result)
+            idx = int(index) - 1
+            if idx < 0 or idx >= len(items):
+                return MessageEventResult().message(f"序号超出范围，请输入 1-{len(items)}")
+            
+            item = items[idx]
+            result = f"动态 ID: {item.get('id_str')}\n"
+            result += f"动态类型: {item.get('type')}\n"
+            result += f"包含的模块: {', '.join(item.get('modules', {}).keys())}\n"
+            
+            if "module_tag" in item.get("modules", {}):
+                result += f"\nmodule_tag:\n{item['modules']['module_tag']}\n"
+            
+            if "display" in item.get("modules", {}):
+                result += f"\ndisplay:\n{item['modules']['display']}\n"
+            
+            # 获取动态内容摘要
+            try:
+                if item.get("type") in ("DYNAMIC_TYPE_DRAW", "DYNAMIC_TYPE_WORD"):
+                    major = item.get("modules", {}).get("module_dynamic", {}).get("major", {})
+                    if "opus" in major:
+                        summary = major["opus"]["summary"]["text"][:200]
+                        result += f"\n内容摘要: {summary}...\n"
+            except:
+                pass
+            
+            return MessageEventResult().message(result)
+        except ValueError:
+            return MessageEventResult().message("序号必须是数字")
 
     async def terminate(self):
         if self.dynamic_listener_task and not self.dynamic_listener_task.done():
