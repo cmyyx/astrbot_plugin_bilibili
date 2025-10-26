@@ -49,6 +49,18 @@ class BiliClient:
             logger.error(f"获取用户动态失败 (UID: {uid}): {e}")
             return None
 
+    async def get_dynamic_detail(self, dynamic_id: str) -> Optional[Dict[str, Any]]:
+        """
+        通过动态 ID 获取单条动态的详细信息。
+        """
+        try:
+            from bilibili_api import dynamic
+            dyn = dynamic.Dynamic(dynamic_id=dynamic_id, credential=self.credential)
+            return await dyn.get_info()
+        except Exception as e:
+            logger.error(f"获取动态详情失败 (Dynamic ID: {dynamic_id}): {e}")
+            return None
+
     async def get_live_info(self, uid: int) -> Optional[Dict[str, Any]]:
         """
         获取用户的直播间信息。

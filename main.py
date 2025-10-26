@@ -412,18 +412,12 @@ class Main(Star):
             await self.dynamic_listener._handle_new_dynamic(sub_user, render_data)
 
     @command("动态调试", alias={"bili_debug"})
-    async def debug_dynamics(self, event: AstrMessageEvent, uid: str):
-        """调试命令：查看某个 UP 主最新动态的原始数据结构"""
-        dyn = await self.bili_client.get_latest_dynamics(int(uid))
-        if not dyn:
+    async def debug_dynamics(self, event: AstrMessageEvent, dynamic_id: str):
+        """调试命令：通过动态 ID 查看动态的原始数据结构。用法: /动态调试 1127889155310747648"""
+        item = await self.bili_client.get_dynamic_detail(dynamic_id)
+        if not item:
             return MessageEventResult().message("获取动态失败")
         
-        items = dyn.get("items", [])
-        if not items:
-            return MessageEventResult().message("该 UP 主没有动态")
-        
-        # 只看第一条动态
-        item = items[0]
         result = f"动态 ID: {item.get('id_str')}\n"
         result += f"动态类型: {item.get('type')}\n"
         result += f"包含的模块: {', '.join(item.get('modules', {}).keys())}\n"
